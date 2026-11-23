@@ -1,0 +1,9 @@
+package retrace.sprite;
+
+public enum SpriteId {
+    NONOGRAM_EMPTY, NONOGRAM_FILLED, NONOGRAM_MARK,
+    CURSOR,
+    SNAKE_FIELD, SNAKE_HEAD, SNAKE_BODY, FOOD,
+    MS_HIDDEN, MS_REVEALED, MS_FLAG, MS_MINE,
+    MC_PORTRAIT
+}
