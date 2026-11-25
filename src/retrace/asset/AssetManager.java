@@ -1,5 +1,9 @@
 package retrace.asset;
 
+import retrace.audio.Track;
+import retrace.audio.TrackFactory;
+import retrace.minigame.MiniGameType;
+
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.util.EnumMap;
@@ -10,6 +14,7 @@ public final class AssetManager {
     private static final AssetManager INSTANCE = new AssetManager();
 
     private final Map<SpriteId, Sprite> sprites = new EnumMap<>(SpriteId.class); // flyweight pool
+    private final Map<String, Track> tracks = new HashMap<>();                   // flyweight pool
 
     private AssetManager() { }
 
@@ -26,6 +31,18 @@ public final class AssetManager {
         getSprite(id).draw(g, x, y, w, h);
     }
 
+    public Track getMenuTrack() {
+        return tracks.computeIfAbsent("menu", k -> TrackFactory.menu());
+    }
+
+    public Track getEndingTrack() {
+        return tracks.computeIfAbsent("ending", k -> TrackFactory.ending());
+    }
+
+    /** One short loop per minigame; the arc (0-3) shifts key and tempo as the story progresses. */
+    public Track getMinigameTrack(MiniGameType type, int arc) {
+        return tracks.computeIfAbsent(type.getKey() + ":" + arc, k -> TrackFactory.minigame(type, arc));
+    }
 
     private static Sprite createPlaceholder(SpriteId id) {
         return switch (id) {

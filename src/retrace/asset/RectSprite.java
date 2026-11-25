@@ -1,4 +1,4 @@
-package retrace.sprite;
+package retrace.asset;
 
 import retrace.core.GFX;
 

@@ -1,9 +1,9 @@
-package retrace.sprite;
+package retrace.asset;
 
 public enum SpriteId {
     NONOGRAM_EMPTY, NONOGRAM_FILLED, NONOGRAM_MARK,
     CURSOR,
-    SNAKE_FIELD, SNAKE_HEAD, SNAKE_BODY, FOOD,
+    SNAKE_FIELD, SNAKE_HEAD, SNAKE_BODY, FOOD, OBSTACLE,
     MS_HIDDEN, MS_REVEALED, MS_FLAG, MS_MINE,
     MC_PORTRAIT
 }

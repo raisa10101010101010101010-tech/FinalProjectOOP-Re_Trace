@@ -1,4 +1,4 @@
-package retrace.sprite;
+package retrace.asset;
 
 import java.awt.Graphics2D;
 
