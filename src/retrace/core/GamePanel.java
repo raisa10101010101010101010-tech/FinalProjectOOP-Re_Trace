@@ -11,13 +11,17 @@ import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
+import java.awt.image.BufferedImage;
 
 public class GamePanel extends JPanel {
+    private final GameContext ctx;
     private final SceneManager scenes;
     private final Timer timer;
+    private final BufferedImage frame = new BufferedImage(Config.WIDTH, Config.HEIGHT, BufferedImage.TYPE_INT_RGB);
     private long last = System.nanoTime();
 
     public GamePanel(GameContext ctx) {
+        this.ctx = ctx;
         this.scenes = ctx.getScenes();
         setPreferredSize(new Dimension(Config.WIDTH, Config.HEIGHT));
         setFocusable(true);
@@ -26,7 +30,10 @@ public class GamePanel extends JPanel {
         addKeyListener(new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
-                if (ctx.getInput().press(e.getKeyCode())) scenes.keyPressed(e.getKeyCode());
+                int code = e.getKeyCode();
+                if (code == KeyEvent.VK_F1) { ctx.getVhs().toggle(); return; }
+                if (code == KeyEvent.VK_F2) { ctx.getMusic().toggleMute(); return; }
+                if (ctx.getInput().press(code)) scenes.keyPressed(code);
             }
 
             @Override
@@ -55,16 +62,18 @@ public class GamePanel extends JPanel {
         double dt = Math.min((now - last) / 1e9, 0.1);
         last = now;
         scenes.update(dt);
+        ctx.getVhs().update(dt);
         repaint();
     }
 
     @Override
     protected void paintComponent(Graphics graphics) {
         super.paintComponent(graphics);
-        Graphics2D g = (Graphics2D) graphics.create();
-        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-        scenes.render(g);
-        g.dispose();
+        Graphics2D fg = frame.createGraphics();
+        fg.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        scenes.render(fg);
+        fg.dispose();
+        graphics.drawImage(ctx.getVhs().isEnabled() ? ctx.getVhs().apply(frame) : frame, 0, 0, null);
         Toolkit.getDefaultToolkit().sync();
     }
 }

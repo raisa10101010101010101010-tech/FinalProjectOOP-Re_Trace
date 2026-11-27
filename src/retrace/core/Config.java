@@ -4,11 +4,9 @@ import java.awt.Color;
 import java.awt.Font;
 
 public final class Config {
-    public static final int WIDTH = 800;
-    public static final int HEIGHT = 600;
-    public static final int FPS = 60;
+    public static final int WIDTH = 800, HEIGHT = 600, FPS = 60;
 
-    /** Set true untuk membuka Game Mode tanpa menamatkan Story Mode (untuk testing). */
+    /** Set true to open Game Mode without finishing Story Mode (testing). */
     public static final boolean DEBUG_UNLOCK_GAME_MODE = false;
 
     public static final String SAVE_DIR = "saves";
@@ -22,6 +20,7 @@ public final class Config {
     public static final Font FONT_TITLE = new Font(Font.MONOSPACED, Font.BOLD, 56);
     public static final Font FONT_BIG = new Font(Font.MONOSPACED, Font.BOLD, 28);
     public static final Font FONT = new Font(Font.MONOSPACED, Font.BOLD, 20);
+    public static final Font FONT_LIST = new Font(Font.MONOSPACED, Font.BOLD, 17);
     public static final Font FONT_SMALL = new Font(Font.MONOSPACED, Font.PLAIN, 14);
 
     private Config() { }
