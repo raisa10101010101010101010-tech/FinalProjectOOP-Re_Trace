@@ -55,7 +55,7 @@ public final class AssetManager {
             case SNAKE_BODY -> new RectSprite(new Color(50, 160, 70), "");
             case FOOD -> new RectSprite(new Color(230, 70, 70), "F");
             case OBSTACLE -> new RectSprite(new Color(90, 80, 75), "#");
-            case MS_HIDDEN -> new RectSprite(new Color(170, 170, 170), "");
+            case MS_HIDDEN -> new RectSprite(new Color(161, 161, 130), "");
             case MS_REVEALED -> new RectSprite(new Color(225, 225, 225), "");
             case MS_FLAG -> new RectSprite(new Color(240, 200, 60), "F");
             case MS_MINE -> new RectSprite(new Color(220, 60, 60), "*");
