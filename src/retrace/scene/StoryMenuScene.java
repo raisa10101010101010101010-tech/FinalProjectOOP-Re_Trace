@@ -1,12 +1,6 @@
 package retrace.scene;
 
-import retrace.core.Config;
-import retrace.core.Difficulty;
-import retrace.core.GameContext;
-import retrace.core.GFX;
-import retrace.core.Input;
-import retrace.core.MenuList;
-import retrace.core.Scene;
+import retrace.core.*;
 import retrace.data.SaveData;
 
 import java.awt.Color;
@@ -27,29 +21,23 @@ public class StoryMenuScene extends Scene {
         super(ctx);
         Difficulty[] all = Difficulty.values();
         String[] labels = new String[all.length + 1];
-        for (int i = 0; i < all.length; i++) {
-            labels[i] = all[i].getLabel() + " (boleh salah " + all[i].getAllowedErrors() + "x)";
-        }
+        for (int i = 0; i < all.length; i++) labels[i] = all[i].getLabel();
         labels[all.length] = "Back";
         difficultyMenu = new MenuList(labels);
     }
 
     @Override
     public void onEnter() {
-        modeMenu.setEnabled(1, anySave());
-    }
-
-    private boolean anySave() {
-        for (int s = 1; s <= Config.SAVE_SLOTS; s++) {
-            if (ctx.getSaves().exists(s)) return true;
-        }
-        return false;
+        ctx.getMusic().play(ctx.getAssets().getMenuTrack());
+        boolean any = false;
+        for (int s = 1; s <= Config.SAVE_SLOTS; s++) any |= ctx.getSaves().exists(s);
+        modeMenu.setEnabled(1, any);
     }
 
     private String slotLabel(int slot) {
         SaveData data = ctx.getSaves().load(slot);
-        if (data == null) return "Slot " + slot + " - (kosong)";
-        return "Slot " + slot + " - " + StoryScript.stage(data.getStageIndex()).title()
+        if (data == null) return "Slot " + slot + " - (empty)";
+        return "Slot " + slot + " - Memory " + (data.getStageIndex() + 1) + "/" + StoryScript.stageCount()
                 + " | " + data.getDifficulty().getLabel() + " | " + GFX.formatTime(data.getPlaySeconds());
     }
 
@@ -118,7 +106,7 @@ public class StoryMenuScene extends Scene {
             return;
         }
         SaveData data = ctx.getSaves().load(chosenSlot);
-        if (data == null) message = "File save rusak atau tidak ditemukan.";
+        if (data == null) message = "Save file is missing or corrupted.";
         else ctx.getScenes().changeTo(new StoryScene(ctx, data));
     }
 
@@ -128,7 +116,7 @@ public class StoryMenuScene extends Scene {
             return;
         }
         SaveData data = ctx.getSaves().createNew(chosenSlot, Difficulty.values()[choice]);
-        if (data == null) message = "Gagal membuat file save.";
+        if (data == null) message = "Could not create the save file.";
         else ctx.getScenes().changeTo(new StoryScene(ctx, data));
     }
 
@@ -147,17 +135,26 @@ public class StoryMenuScene extends Scene {
         g.setColor(Config.ACCENT);
         g.setFont(Config.FONT);
         String subtitle = switch (step) {
-            case MODE -> "Mulai cerita baru atau lanjutkan";
-            case SLOT -> creatingNew ? "New File - pilih slot (slot terisi akan ditimpa)" : "Load State - pilih slot";
-            case DIFFICULTY -> "Pilih tingkat kesulitan";
+            case MODE -> "Start a new story or continue";
+            case SLOT -> creatingNew ? "New File - choose a slot (a used slot will be overwritten)"
+                    : "Load State - choose a slot";
+            case DIFFICULTY -> "Choose a difficulty";
         };
         GFX.drawCentered(g, subtitle, Config.WIDTH / 2, 160);
 
         currentMenu().render(g, Config.WIDTH / 2, 250, 55);
 
+        if (step == Step.DIFFICULTY && difficultyMenu.getSelected() < Difficulty.values().length) {
+            g.setColor(new Color(0, 0, 0, 90));
+            g.fillRect(50, 440, 700, 100);
+            g.setColor(Config.TEXT);
+            g.setFont(Config.FONT);
+            GFX.drawWrapped(g, Difficulty.values()[difficultyMenu.getSelected()].getDescription(), 70, 468, 660, 26);
+        }
+
         g.setFont(Config.FONT_SMALL);
         g.setColor(Config.TEXT);
-        if (!message.isEmpty()) GFX.drawCentered(g, message, Config.WIDTH / 2, 500);
-        GFX.drawCentered(g, "Up/Down: pilih   |   SPACE: konfirmasi   |   SHIFT: kembali", Config.WIDTH / 2, 565);
+        if (!message.isEmpty()) GFX.drawCentered(g, message, Config.WIDTH / 2, 425);
+        GFX.drawCentered(g, "Up/Down: select   |   SPACE: confirm   |   SHIFT: back", Config.WIDTH / 2, 565);
     }
 }

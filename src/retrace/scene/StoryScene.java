@@ -1,21 +1,19 @@
 package retrace.scene;
 
-import retrace.core.Config;
-import retrace.core.GameContext;
-import retrace.core.GFX;
-import retrace.core.Input;
-import retrace.core.MenuList;
-import retrace.core.Scene;
+import retrace.asset.SpriteId;
+import retrace.core.*;
 import retrace.data.SaveData;
-import retrace.minigame.MiniGame;
-import retrace.sprite.SpriteId;
+import retrace.minigame.MiniGameObserver;
+import retrace.minigame.MiniGameStrategy;
+import retrace.minigame.PlayerInput;
+import retrace.puzzle.PuzzleFactory;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.event.KeyEvent;
 
-public class StoryScene extends Scene implements MiniGame.Listener {
-    private enum Phase { INTRO, PLAYING, FAILED, PAUSED }
+public class StoryScene extends Scene implements MiniGameObserver {
+    private enum Phase { INTRO, PLAYING, FAILED, PAUSED, CHECKPOINT }
 
     private static final double CLEAR_DELAY = 1.5;
 
@@ -23,13 +21,13 @@ public class StoryScene extends Scene implements MiniGame.Listener {
     private final int stageIndex;
     private final StoryScript.StageDefinition stage;
     private final ErrorOverlay overlay = new ErrorOverlay();
-    private final MenuList pauseMenu = new MenuList("Resume", "Save State", "Load State", "Quit to Menu");
-    private MiniGame game;
+    private final MenuList pauseMenu = new MenuList("Resume", "Load State", "Quit to Menu");
+    private final MenuList checkpointMenu = new MenuList("Save and continue", "Continue without saving");
+    private MiniGameStrategy game;
     private Phase phase = Phase.INTRO;
-    private boolean cleared;
-    private boolean finishing;
+    private boolean cleared, finishing;
     private double clearTimer;
-    private String pauseMessage = "";
+    private String message = "";
 
     public StoryScene(GameContext ctx, SaveData data) {
         super(ctx);
@@ -41,38 +39,49 @@ public class StoryScene extends Scene implements MiniGame.Listener {
     }
 
     private void startGame() {
-        game = stage.type().create(ctx, data.getDifficulty());
-        game.setListener(this);
+        // Strategy pattern: the minigame logic is chosen from the stage definition
+        game = stage.type().createStrategy(ctx, PuzzleFactory.create(stage.tier()), data.getDifficulty());
+        game.addObserver(this);
         overlay.reset();
         cleared = false;
         finishing = false;
     }
 
-    // ---- MiniGame.Listener ----
+    @Override
+    public void onEnter() {
+        ctx.getMusic().play(ctx.getAssets().getMinigameTrack(stage.type(), stage.arc()));
+    }
+
+    // ---- Observer callbacks ----
 
     @Override
-    public void onError(MiniGame source, int errorCount) {
+    public void onPlayerInput(MiniGameStrategy source, PlayerInput input) {
+        if (!input.valid()) ctx.getVhs().pulse();
+    }
+
+    @Override
+    public void onError(MiniGameStrategy source, int errorCount) {
         data.addError();
         overlay.addError(StoryScript.errorText(errorCount));
     }
 
     @Override
-    public void onWin(MiniGame source, int score) {
+    public void onWin(MiniGameStrategy source, int score) {
         cleared = true;
         clearTimer = CLEAR_DELAY;
     }
 
     @Override
-    public void onFail(MiniGame source) {
+    public void onFail(MiniGameStrategy source) {
         phase = Phase.FAILED;
     }
 
-    // ---- alur scene ----
+    // ---- flow ----
 
     @Override
     public void update(double dt) {
-        if (phase == Phase.PLAYING) overlay.update(dt);
         if (phase != Phase.PLAYING) return;
+        overlay.update(dt);
         if (cleared) {
             if (!finishing) {
                 clearTimer -= dt;
@@ -87,16 +96,25 @@ public class StoryScene extends Scene implements MiniGame.Listener {
         game.update(dt);
     }
 
+    private boolean isCheckpoint() {
+        return (stageIndex + 1) % data.getDifficulty().getSaveInterval() == 0;
+    }
+
     private void finishStage() {
-        boolean last = stageIndex >= StoryScript.stageCount() - 1;
-        if (last) {
+        if (stageIndex >= StoryScript.stageCount() - 1) {
             ctx.getSaves().setStoryCompleted(true);
             ctx.getScenes().changeTo(new EndingScene(ctx));
+        } else if (isCheckpoint()) {
+            phase = Phase.CHECKPOINT;
+            message = "";
         } else {
-            data.setStageIndex(stageIndex + 1);
-            ctx.getSaves().save(data); // auto-save setiap tahap selesai
-            ctx.getScenes().changeTo(new StoryScene(ctx, data));
+            advance();
         }
+    }
+
+    private void advance() {
+        data.setStageIndex(stageIndex + 1);
+        ctx.getScenes().changeTo(new StoryScene(ctx, data));
     }
 
     @Override
@@ -108,7 +126,7 @@ public class StoryScene extends Scene implements MiniGame.Listener {
             case PLAYING -> {
                 if (keyCode == KeyEvent.VK_ESCAPE) {
                     phase = Phase.PAUSED;
-                    pauseMessage = "";
+                    message = "";
                 } else if (!cleared) {
                     game.keyPressed(keyCode);
                 }
@@ -120,6 +138,7 @@ public class StoryScene extends Scene implements MiniGame.Listener {
                 }
             }
             case PAUSED -> handlePauseKey(keyCode);
+            case CHECKPOINT -> handleCheckpointKey(keyCode);
         }
     }
 
@@ -132,22 +151,27 @@ public class StoryScene extends Scene implements MiniGame.Listener {
         if (!Input.isConfirm(keyCode)) return;
         switch (pauseMenu.getSelected()) {
             case 0 -> phase = Phase.PLAYING;
-            case 1 -> pauseMessage = ctx.getSaves().save(data)
-                    ? "State tersimpan di Slot " + data.getSlot() + "."
-                    : "Gagal menyimpan state.";
-            case 2 -> loadState();
-            case 3 -> ctx.getScenes().changeTo(new MenuScene(ctx));
+            case 1 -> loadState();
+            case 2 -> ctx.getScenes().changeTo(new MenuScene(ctx));
             default -> { }
         }
     }
 
     private void loadState() {
         SaveData loaded = ctx.getSaves().load(data.getSlot());
-        if (loaded == null) {
-            pauseMessage = "Tidak ada state tersimpan.";
-            return;
+        if (loaded == null) message = "No saved state to load.";
+        else ctx.getScenes().changeTo(new StoryScene(ctx, loaded));
+    }
+
+    private void handleCheckpointKey(int keyCode) {
+        if (checkpointMenu.navigate(keyCode) || !Input.isConfirm(keyCode)) return;
+        if (checkpointMenu.getSelected() == 0) {
+            data.setStageIndex(stageIndex + 1);
+            if (ctx.getSaves().save(data)) advance();
+            else message = "Could not write the save file. Try again or continue without saving.";
+        } else {
+            advance();
         }
-        ctx.getScenes().changeTo(new StoryScene(ctx, loaded));
     }
 
     // ---- render ----
@@ -161,24 +185,25 @@ public class StoryScene extends Scene implements MiniGame.Listener {
             renderIntro(g);
             return;
         }
-        HUD.draw(g, game, "Ingatan " + (stageIndex + 1) + "/" + StoryScript.stageCount()
-                + "  -  " + data.getDifficulty().getLabel(), "ESC: jeda");
+        HUD.draw(g, game, "Memory " + (stageIndex + 1) + "/" + StoryScript.stageCount()
+                + "  -  " + stage.title() + "  -  " + data.getDifficulty().getLabel(), "ESC: pause");
         HUD.drawGame(g, game);
-        overlay.render(g, phase != Phase.FAILED);
+        overlay.render(g, phase == Phase.PLAYING);
 
         if (phase == Phase.FAILED) renderFailed(g);
         if (phase == Phase.PAUSED) renderPause(g);
+        if (phase == Phase.CHECKPOINT) renderCheckpoint(g);
     }
 
     private void renderIntro(Graphics2D g) {
-        ctx.getSprites().draw(g, SpriteId.MC_PORTRAIT, 60, 200, 140, 200);
+        ctx.getAssets().draw(g, SpriteId.MC_PORTRAIT, 60, 200, 140, 200);
         g.setColor(Config.TEXT);
         g.setFont(Config.FONT_BIG);
         g.drawString(stage.title() + " - " + stage.type().getLabel(), 240, 220);
         g.setFont(Config.FONT);
         GFX.drawWrapped(g, stage.introText(), 240, 270, 500, 30);
         g.setFont(Config.FONT_SMALL);
-        GFX.drawCentered(g, "[SPACE] mulai", Config.WIDTH / 2, 565);
+        GFX.drawCentered(g, "[SPACE] begin", Config.WIDTH / 2, 565);
     }
 
     private void renderFailed(Graphics2D g) {
@@ -186,10 +211,10 @@ public class StoryScene extends Scene implements MiniGame.Listener {
         g.fillRect(0, 0, Config.WIDTH, Config.HEIGHT);
         g.setColor(Config.TEXT);
         g.setFont(Config.FONT_BIG);
-        GFX.drawCentered(g, "Ingatan memudar...", Config.WIDTH / 2, 230);
+        GFX.drawCentered(g, "The memory fades...", Config.WIDTH / 2, 230);
         g.setFont(Config.FONT);
         GFX.drawWrapped(g, StoryScript.FAIL_TEXT, 100, 280, 600, 30);
-        GFX.drawCentered(g, "[SPACE] coba lagi", Config.WIDTH / 2, 380);
+        GFX.drawCentered(g, "[SPACE] try again", Config.WIDTH / 2, 380);
     }
 
     private void renderPause(Graphics2D g) {
@@ -201,6 +226,19 @@ public class StoryScene extends Scene implements MiniGame.Listener {
         pauseMenu.render(g, Config.WIDTH / 2, 250, 50);
         g.setFont(Config.FONT);
         g.setColor(Config.ACCENT);
-        if (!pauseMessage.isEmpty()) GFX.drawCentered(g, pauseMessage, Config.WIDTH / 2, 480);
+        if (!message.isEmpty()) GFX.drawCentered(g, message, Config.WIDTH / 2, 480);
+    }
+
+    private void renderCheckpoint(Graphics2D g) {
+        g.setColor(new Color(0, 0, 0, 170));
+        g.fillRect(0, 0, Config.WIDTH, Config.HEIGHT);
+        g.setColor(Config.TEXT);
+        g.setFont(Config.FONT_BIG);
+        GFX.drawCentered(g, "Memory restored", Config.WIDTH / 2, 170);
+        g.setFont(Config.FONT);
+        GFX.drawCentered(g, "You can be assured now. Save your progress?", Config.WIDTH / 2, 215);
+        checkpointMenu.render(g, Config.WIDTH / 2, 300, 55);
+        g.setColor(Config.ACCENT);
+        if (!message.isEmpty()) GFX.drawWrapped(g, message, 100, 440, 600, 26);
     }
 }
