@@ -1,22 +1,19 @@
 package retrace.scene;
 
-import retrace.core.Config;
-import retrace.core.Difficulty;
-import retrace.core.GameContext;
-import retrace.core.GFX;
-import retrace.core.Input;
-import retrace.core.MenuList;
-import retrace.core.Scene;
+import retrace.core.*;
 import retrace.minigame.MiniGameType;
+import retrace.puzzle.Puzzle;
+import retrace.puzzle.PuzzleFactory;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.event.KeyEvent;
-import java.util.List;
 
 public class GameModeScene extends Scene {
     private final MiniGameType[] types = MiniGameType.values();
-    private final MenuList menu;
+    private final MenuList typeMenu;
+    private MenuList stageMenu;
+    private boolean stageFocus;
     private Difficulty difficulty = Difficulty.NORMAL;
 
     public GameModeScene(GameContext ctx) {
@@ -24,7 +21,30 @@ public class GameModeScene extends Scene {
         String[] labels = new String[types.length + 1];
         for (int i = 0; i < types.length; i++) labels[i] = types[i].getLabel();
         labels[types.length] = "Back";
-        menu = new MenuList(labels);
+        typeMenu = new MenuList(labels);
+        buildStageMenu();
+    }
+
+    @Override
+    public void onEnter() {
+        ctx.getMusic().play(ctx.getAssets().getMenuTrack());
+    }
+
+    private void buildStageMenu() {
+        int selected = typeMenu.getSelected();
+        if (selected >= types.length) {
+            stageMenu = null;
+            return;
+        }
+        MiniGameType type = types[selected];
+        int count = StoryScript.stageCountOf(type);
+        String[] labels = new String[count];
+        for (int i = 0; i < count; i++) {
+            Puzzle puzzle = PuzzleFactory.create(StoryScript.tierOf(type, i));
+            int best = ctx.getScoreBoard().getBest(type, i);
+            labels[i] = "Stage " + (i + 1) + "  " + puzzle.describe(type) + "  Best: " + (best > 0 ? best : "-");
+        }
+        stageMenu = new MenuList(labels);
     }
 
     @Override
@@ -32,17 +52,31 @@ public class GameModeScene extends Scene {
 
     @Override
     public void keyPressed(int keyCode) {
-        if (menu.navigate(keyCode)) return;
-        if (keyCode == KeyEvent.VK_LEFT) {
-            difficulty = difficulty.previous();
-        } else if (keyCode == KeyEvent.VK_RIGHT) {
-            difficulty = difficulty.next();
-        } else if (Input.isBack(keyCode)) {
+        if (keyCode == KeyEvent.VK_ESCAPE) {
             ctx.getScenes().changeTo(new MenuScene(ctx));
-        } else if (Input.isConfirm(keyCode)) {
-            int selected = menu.getSelected();
-            if (selected == types.length) ctx.getScenes().changeTo(new MenuScene(ctx));
-            else ctx.getScenes().changeTo(new PlayScene(ctx, types[selected], difficulty));
+            return;
+        }
+        if (keyCode == KeyEvent.VK_SHIFT) {
+            difficulty = difficulty.next();
+            return;
+        }
+        if (stageFocus) {
+            if (stageMenu.navigate(keyCode)) return;
+            if (keyCode == KeyEvent.VK_LEFT) {
+                stageFocus = false;
+            } else if (Input.isConfirm(keyCode)) {
+                ctx.getScenes().changeTo(new PlayScene(ctx, types[typeMenu.getSelected()],
+                        stageMenu.getSelected(), difficulty));
+            }
+        } else {
+            if (typeMenu.navigate(keyCode)) {
+                buildStageMenu();
+            } else if (keyCode == KeyEvent.VK_RIGHT && stageMenu != null) {
+                stageFocus = true;
+            } else if (Input.isConfirm(keyCode)) {
+                if (stageMenu == null) ctx.getScenes().changeTo(new MenuScene(ctx));
+                else stageFocus = true;
+            }
         }
     }
 
@@ -53,38 +87,25 @@ public class GameModeScene extends Scene {
 
         g.setColor(Color.WHITE);
         g.setFont(Config.FONT_TITLE);
-        GFX.drawCentered(g, "Game Mode", Config.WIDTH / 2, 100);
+        GFX.drawCentered(g, "Game Mode", Config.WIDTH / 2, 90);
 
-        menu.render(g, 250, 220, 55);
+        g.setColor(new Color(0, 0, 0, 70));
+        g.fillRect(30, 130, 280, 340);
+        g.fillRect(330, 130, 440, 340);
+
+        typeMenu.render(g, 170, 200, 60, Config.FONT_BIG, !stageFocus);
+        g.setFont(Config.FONT);
+        g.setColor(Config.TEXT);
+        g.drawString("Stages", 350, 160);
+        if (stageMenu != null) stageMenu.render(g, 550, 210, 48, Config.FONT_LIST, stageFocus);
 
         g.setFont(Config.FONT);
         g.setColor(Config.ACCENT);
-        GFX.drawCentered(g, "< " + difficulty.getLabel() + " (boleh salah "
-                + difficulty.getAllowedErrors() + "x) >", 250, 470);
-
-        int selected = menu.getSelected();
-        if (selected < types.length) renderScoreBoard(g, types[selected]);
+        GFX.drawCentered(g, "Difficulty: " + difficulty.getLabel() + " (SHIFT to change)", Config.WIDTH / 2, 515);
 
         g.setFont(Config.FONT_SMALL);
         g.setColor(Config.TEXT);
-        GFX.drawCentered(g, "Up/Down: pilih   Left/Right: kesulitan   SPACE: main   SHIFT: kembali",
+        GFX.drawCentered(g, "Up/Down: select   Right/Left: switch list   SPACE: play   ESC: back",
                 Config.WIDTH / 2, 565);
-    }
-
-    private void renderScoreBoard(Graphics2D g, MiniGameType type) {
-        g.setColor(new Color(0, 0, 0, 90));
-        g.fillRect(470, 170, 290, 260);
-        g.setColor(Config.TEXT);
-        g.setFont(Config.FONT);
-        g.drawString("Score Board", 490, 205);
-        g.setFont(Config.FONT_SMALL);
-        g.drawString(type.getLabel(), 490, 228);
-
-        List<Integer> list = ctx.getScoreBoard().getScores(type);
-        g.setFont(Config.FONT_BIG);
-        for (int i = 0; i < 5; i++) {
-            String value = i < list.size() ? String.valueOf(list.get(i)) : "-";
-            g.drawString((i + 1) + ".  " + value, 490, 275 + i * 36);
-        }
     }
 }

@@ -1,11 +1,7 @@
 package retrace.scene;
 
-import retrace.core.Config;
-import retrace.core.GameContext;
-import retrace.core.GFX;
-import retrace.core.Input;
-import retrace.core.Scene;
-import retrace.sprite.SpriteId;
+import retrace.asset.SpriteId;
+import retrace.core.*;
 
 import java.awt.Graphics2D;
 
@@ -15,22 +11,27 @@ public class EndingScene extends Scene {
     }
 
     @Override
+    public void onEnter() {
+        ctx.getMusic().play(ctx.getAssets().getEndingTrack());
+    }
+
+    @Override
     public void update(double dt) { }
 
     @Override
     public void render(Graphics2D g) {
         g.setColor(Config.ACCENT);
         g.fillRect(0, 0, Config.WIDTH, Config.HEIGHT);
-        ctx.getSprites().draw(g, SpriteId.MC_PORTRAIT, 60, 200, 140, 200);
+        ctx.getAssets().draw(g, SpriteId.MC_PORTRAIT, 60, 200, 140, 200);
 
         g.setColor(Config.DARK);
         g.setFont(Config.FONT_BIG);
-        g.drawString("Tamat", 240, 220);
+        g.drawString("The End", 240, 220);
         g.setFont(Config.FONT);
         GFX.drawWrapped(g, StoryScript.ENDING_TEXT, 240, 270, 500, 30);
-        g.drawString("Game Mode telah terbuka!", 240, 400);
+        g.drawString("Game Mode is now unlocked!", 240, 400);
         g.setFont(Config.FONT_SMALL);
-        GFX.drawCentered(g, "[SPACE] kembali ke menu", Config.WIDTH / 2, 565);
+        GFX.drawCentered(g, "[SPACE] back to menu", Config.WIDTH / 2, 565);
     }
 
     @Override
