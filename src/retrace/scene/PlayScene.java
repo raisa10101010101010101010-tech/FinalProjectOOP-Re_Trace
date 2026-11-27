@@ -1,48 +1,56 @@
 package retrace.scene;
 
-import retrace.core.Config;
-import retrace.core.Difficulty;
-import retrace.core.GameContext;
-import retrace.core.GFX;
-import retrace.core.Input;
-import retrace.core.Scene;
-import retrace.minigame.MiniGame;
+import retrace.core.*;
+import retrace.minigame.MiniGameObserver;
+import retrace.minigame.MiniGameStrategy;
 import retrace.minigame.MiniGameType;
+import retrace.minigame.PlayerInput;
+import retrace.puzzle.PuzzleFactory;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.event.KeyEvent;
 
-public class PlayScene extends Scene implements MiniGame.Listener {
+/** Plays one Game Mode stage (no story overlay). The score goes to the score board. */
+public class PlayScene extends Scene implements MiniGameObserver {
     private final MiniGameType type;
+    private final int stageIndex;
+    private final int tier;
     private final Difficulty difficulty;
-    private final MiniGame game;
-    private boolean finished;
-    private boolean won;
+    private final MiniGameStrategy game;
+    private boolean finished, won, newBest;
     private int score;
-    private int rank;
 
-    public PlayScene(GameContext ctx, MiniGameType type, Difficulty difficulty) {
+    public PlayScene(GameContext ctx, MiniGameType type, int stageIndex, Difficulty difficulty) {
         super(ctx);
         this.type = type;
+        this.stageIndex = stageIndex;
         this.difficulty = difficulty;
-        this.game = type.create(ctx, difficulty);
-        this.game.setListener(this);
+        this.tier = StoryScript.tierOf(type, stageIndex);
+        this.game = type.createStrategy(ctx, PuzzleFactory.create(tier), difficulty);
+        this.game.addObserver(this);
     }
 
     @Override
-    public void onError(MiniGame source, int errorCount) { }
+    public void onEnter() {
+        ctx.getMusic().play(ctx.getAssets().getMinigameTrack(type, Math.min(3, tier)));
+    }
 
     @Override
-    public void onWin(MiniGame source, int score) {
+    public void onPlayerInput(MiniGameStrategy source, PlayerInput input) {
+        if (!input.valid()) ctx.getVhs().pulse();
+    }
+
+    @Override
+    public void onWin(MiniGameStrategy source, int score) {
         finished = true;
         won = true;
         this.score = score;
-        this.rank = ctx.getScoreBoard().submit(type, score);
+        newBest = ctx.getScoreBoard().submit(type, stageIndex, score);
     }
 
     @Override
-    public void onFail(MiniGame source) {
+    public void onFail(MiniGameStrategy source) {
         finished = true;
         won = false;
     }
@@ -56,17 +64,18 @@ public class PlayScene extends Scene implements MiniGame.Listener {
     public void keyPressed(int keyCode) {
         if (finished) {
             if (Input.isConfirm(keyCode)) ctx.getScenes().changeTo(new GameModeScene(ctx));
-            return;
+        } else if (keyCode == KeyEvent.VK_ESCAPE) {
+            ctx.getScenes().changeTo(new GameModeScene(ctx));
+        } else {
+            game.keyPressed(keyCode);
         }
-        if (keyCode == KeyEvent.VK_ESCAPE) ctx.getScenes().changeTo(new GameModeScene(ctx));
-        else game.keyPressed(keyCode);
     }
 
     @Override
     public void render(Graphics2D g) {
         g.setColor(Config.DARK);
         g.fillRect(0, 0, Config.WIDTH, Config.HEIGHT);
-        HUD.draw(g, game, "Game Mode  -  " + difficulty.getLabel(), "ESC: keluar");
+        HUD.draw(g, game, "Game Mode  -  Stage " + (stageIndex + 1) + "  -  " + difficulty.getLabel(), "ESC: exit");
         HUD.drawGame(g, game);
 
         if (!finished) return;
@@ -74,16 +83,15 @@ public class PlayScene extends Scene implements MiniGame.Listener {
         g.fillRect(0, 0, Config.WIDTH, Config.HEIGHT);
         g.setColor(Config.TEXT);
         g.setFont(Config.FONT_TITLE);
-        GFX.drawCentered(g, won ? "Selesai!" : "Gagal", Config.WIDTH / 2, 230);
+        GFX.drawCentered(g, won ? "Cleared!" : "Failed", Config.WIDTH / 2, 230);
         g.setFont(Config.FONT_BIG);
         if (won) {
-            GFX.drawCentered(g, "Skor: " + score, Config.WIDTH / 2, 290);
-            GFX.drawCentered(g, rank == 1 ? "REKOR BARU!"
-                    : rank > 0 ? "Peringkat #" + rank : "Tidak masuk 5 besar", Config.WIDTH / 2, 335);
+            GFX.drawCentered(g, "Score: " + score, Config.WIDTH / 2, 290);
+            if (newBest) GFX.drawCentered(g, "NEW BEST!", Config.WIDTH / 2, 335);
         } else {
-            GFX.drawCentered(g, "Terlalu banyak kesalahan", Config.WIDTH / 2, 290);
+            GFX.drawCentered(g, "Too many errors", Config.WIDTH / 2, 290);
         }
         g.setFont(Config.FONT);
-        GFX.drawCentered(g, "[SPACE] kembali", Config.WIDTH / 2, 420);
+        GFX.drawCentered(g, "[SPACE] back", Config.WIDTH / 2, 420);
     }
 }
